@@ -1,0 +1,81 @@
+https://qiita.com/rururu_kenken/items/0a7434969ff2c28576eb
+
+sudo su -
+
+vi /etc/hosts
+172.31.27.58 k8s-master
+172.31.28.163 k8s-node-1
+
+# ホスト名の設定
+hostnamectl set-hostname k8s-master
+
+
+vi /etc/cloud/cloud.cfg 
+preserve_hostname: true
+
+
+
+sudo yum update -y
+
+# dockerインストール
+yum -y install docker
+systemctl enable docker && systemctl restart docker
+
+
+
+
+# リポジトリの追加 (k8s用)
+sh -c "cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+"
+
+yum clean all
+#yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+yum install -y kubeadm kubectl --disableexcludes=kubernetes
+
+#systemctl enable kubelet && systemctl start kubelet
+
+#masterのみ
+yum install -y tc
+kubeadm init --ignore-preflight-errors=NumCPU
+
+
+# kubectl 接続設定
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -g) $HOME/.kube/config
+
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+kubectl get cs
+
+
+
+worker側
+
+ホスト名の設定
+hostnamectl set-hostname k8s-node-1
+hostファイル編集
+Dockerインストール
+kubelet、kubeadm、kubectlインストール
+kubelet 起動
+
+
+# WARNING でるのでtcインストール
+sudo yum install -y tc
+
+# 「kubeadm token create --print-join-command」はMaster Nodeで実行
+kubeadm token create --print-join-command
+
+# 長いので「・・・」で省略
+kubeadm join 172.31.27.58:6443 --token 6wg0w7.ly5yrdz5yfc3oifj --discovery-token-ca-cert-hash sha256:b90582b040bb6225ac963d13a08754dd48b905c55c511af3a34dbaad0e49da67

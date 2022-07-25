@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Resources:
+  SessionManageRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "SessionManageRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref SessionManageRole
+
+  EC2Instance01: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-0b7546e839d7ace12
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: subnet-a37df588
+          GroupSet:
+            - sg-0f7e2fabac6b866d8
+      UserData: !Base64 |
+        #!/bin/bash
+        sudo yum install -y git
+        sudo yum install -y bind bind-chroot bind-utils
+      Tags:
+          - Key: Name
+            Value: bind-master
+
+  EC2Instance02: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-0b7546e839d7ace12
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: subnet-a37df588
+          GroupSet:
+            - sg-0f7e2fabac6b866d8
+      UserData: !Base64 |
+        #!/bin/bash
+        sudo yum install -y git
+        sudo yum install -y bind bind-chroot bind-utils
+      Tags:
+          - Key: Name
+            Value: bind-slave
