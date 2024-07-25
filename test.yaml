@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create an EC2 instance and register it with an existing target group.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID
+  TargetGroupArn:
+    Type: String
+    Description: ARN of the existing target group (e.g., arn:aws:elasticloadbalancing:region:account-id:targetgroup/targetgroup01/xxxxxxxxxxxx)
+
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      InstanceType: t2.micro
+      ImageId: ami-0abcdef1234567890 # Replace with a valid AMI ID in your region
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: '0'
+          SubnetId: !Ref SubnetId
+          GroupSet: 
+            - !Ref SecurityGroupId
+
+  TargetGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties: 
+      TargetGroupArn: !Ref TargetGroupArn
+      TargetId: !Ref EC2Instance
+      Port: 80
+
+Outputs:
+  InstanceId:
+    Description: The ID of the EC2 instance
+    Value: !Ref EC2Instance
