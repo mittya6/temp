@@ -1,1 +1,1 @@
-grep -r --exclude-dir={proc,sys,dev,tmp,var/tmp,var/cache,var/backups,run,mnt,media,lost+found} 'error' /
+0,10,20,30,40,50 22-23,0-9 ? * MON-SAT
