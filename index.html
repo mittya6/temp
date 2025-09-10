@@ -6,15 +6,19 @@
     <title>テスト</title>
     <link href="style.css" rel="stylesheet" type="text/css">
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" integrity="sha512-DxV+EoADOkOygM4IR9yXP8Sb2qwgidEmeqAEmDKIOfPRQZOWbXCzLC6vjbZyy0vPisbH2SyW27+ddLVCN+OMzQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/js/all.min.js" integrity="sha512-gBYquPLlR76UWqCwD06/xwal4so02RjIR0oyG1TIhSGwmBTRrIkQbaPehPF8iwuY9jFikDHMGEelt0DtY7jtvQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css"
+        integrity="sha512-DxV+EoADOkOygM4IR9yXP8Sb2qwgidEmeqAEmDKIOfPRQZOWbXCzLC6vjbZyy0vPisbH2SyW27+ddLVCN+OMzQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/js/all.min.js"
+        integrity="sha512-gBYquPLlR76UWqCwD06/xwal4so02RjIR0oyG1TIhSGwmBTRrIkQbaPehPF8iwuY9jFikDHMGEelt0DtY7jtvQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 
 <body>
-    <header class="topHeader">
+    <header class="site-header">
         <div class="title">
             <div class="icon"><i class="fa-solid fa-crow"></i></div>
-            <div>Adelie</div>
+            <h1>Adelie</h1>
         </div>
 
         <div class="linkMenu">
@@ -24,14 +28,93 @@
             <div>緊急</div>
         </div>
     </header>
-    <header class="middleHeader">
-        header
+    <header class="sub-header">
+        <details>
+            <summary>詳細を表示</summary>
+            <div>
+            <div>消耗品MAP</div>
+            <div>商品Sub</div>
+            <div>契約</div>
+            </div>
+        </details>
+
     </header>
-    <header class="menuHeader">
-        header2
+    <header class="info-header">
+        <ul>
+            <li>CC機種グループコード： ap-dc5-h40320</li>
+            <li>表意機種コード： ASG3FF3DR</li>
+            <li>保守販社： YU東京</li>
+        </ul>
     </header>
-    <main class="main">main</main>
-    <aside class="side">aside</aside>
+    <main class="main">
+
+        <div class="container">
+
+            <form>
+                <hr />
+                <div class="inputrow textfield">
+                    <div>エラーコード</div>
+                    <div>
+                        <input type="text" name="errorCode" value="ASG3FF3DR" class="errorCode">
+                        <span>-</span>
+                        <input type="text" name="errorCode" value="ASG3FF3DR" class="errorCode">
+                    </div>
+                    <div>
+                        <input type="button" value="検索">
+                    </div>
+                </div>
+
+                <hr />
+
+                <div class="inputrow textfield">
+                    <div>商品コード</div>
+                    <div>
+                        <input type="text" name="errorCode" value="ASG3FF3DR">
+                    </div>
+                    <div>
+                        <input type="button" value="検索">
+                    </div>
+                </div>
+
+                <hr />
+
+                <div class="inputrow">
+                    <textarea></textarea>
+                </div>
+
+                <div class="inputrow">
+                    <div>
+                        <div class="switch">
+                            <label>
+                                対話ON
+                                <input type="radio" name="convswitch" value="on">
+                            </label>
+                            <label>
+                                OFF
+                                <input type="radio" name="convswitch" value="off">
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="button" value="ひとつ戻る">
+                        <input type="button" value="検索">
+                        <input type="button" value="クリア">
+                    </div>
+                </div>
+
+            </form>
+        </div>
+
+        <div class="container">
+            プリント<br />
+            プリントですね。<br />
+            検索を行います。
+        </div>
+    </main>
+    <aside class="side">
+        <div></div>
+
+    </aside>
 </body>
 
 </html>
