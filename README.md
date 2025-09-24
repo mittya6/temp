@@ -1,129 +1,138 @@
-結論だけ先に👇
+了解。kubeadm で作ったクラスタが「connection refused :443」で叩けない＆証明書が怪しいときの“復旧手順（単一コントロールプレーン/自己署名CA想定）”を最短でまとめます。
+※ 途中のコマンドは**コントロールプレーンノード**で実施、基本 `sudo` 必須です。
 
-oracledb v4.1.0 は古く、initOracleClient() もありません。Node 22 では最新版(6系)に上げてください。 
-npm
-+1
+# 手順（チェック → 更新 → 再起動 → 確認）
 
-ただし接続先が Oracle Database 11g なので、6系の “Thin モード” は使えません（Thin は 12.1 以降のみ）。**“Thick モード”**で Instant Client を同梱して動かす必要があります。
-Node-OracleDB
-+1
+## 0) まず基本確認
 
-対処手順（Lambda/Node.js 22 + Oracle 11g）
+```bash
+# kubelet が落ちていないか
+sudo systemctl status kubelet
 
-ドライバを 6.x に更新（Node 22 対応）
+# ログ live で確認（エラーがあれば控える）
+sudo journalctl -u kubelet -f
+```
 
-npm i oracledb@^6
+## 1) 証明書の有効期限を確認
 
+```bash
+sudo kubeadm certs check-expiration
+```
 
-6系はデフォルト Thin ですが、11g では不可のため Thick を明示します。
-Node-OracleDB
+* 期限切れが出るなら次へ。
 
-Instant Client を Layer に入れる
-Lambda のアーキ（x86_64 or arm64）と一致する Instant Client 19.x（Basic または Basic Light）をダウンロードし、/opt/oracle/instantclient_19_ に展開した ZIP を Layer 化します（AL2023 用に作り直し）。19.x クライアントは 11.2 以降のDBに接続可能です。
-Oracle
+## 2) コントロールプレーンの証明書を更新
 
-環境変数を設定
+```bash
+# すべて更新（自己署名CAを使っている一般的な構成）
+sudo kubeadm certs renew all
+```
 
-LD_LIBRARY_PATH=/opt/oracle/instantclient_19_*/
+> ここで「/etc/kubernetes/pki/ca.key: permission denied（or not found）」が出る場合
+>
+> * `sudo` を付けているか確認
+> * **ca.key が無い**なら、kubeadm 管理の CA を紛失している状態です。既存 CA での更新は不可なので、後述の「トラブル対処」を参照してください。
 
-可能なら PATH にも同ディレクトリを先頭追加
-Thick はクライアントライブラリ（libclntsh.so 等）をこのパスから読み込みます。
-Node-OracleDB
+## 3) kubeconfig（admin.conf など）も更新（期限切れ対策）
 
-コード側で Thick を初期化
+```bash
+sudo kubeadm init phase kubeconfig all
+```
 
-const oracledb = require('oracledb'); // v6+
-oracledb.initOracleClient({ libDir: '/opt/oracle/instantclient_19_22' }); // 例
-exports.handler = async () => {
-  const conn = await oracledb.getConnection({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    connectString: 'host.example.com:1521/ORCL' // いつものEZConnect等
-  });
-  const r = await conn.execute('select 1 from dual');
-  await conn.close();
-  return r.rows;
-};
+その後、kubectl 用にコピー：
 
+```bash
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
 
-initOracleClient() は Thick 必須の初期化です（v6ドキュメント）。
-Node-OracleDB
+## 4) kubelet 再起動（静的Podの再作成を促す）
 
-まだ DPI-1047 が出る場合のヒント
+```bash
+sudo systemctl restart kubelet
+# 数十秒待つ
+```
 
-DPI_DEBUG_LEVEL=64 を環境変数に設定してロード探索ログを確認（どこを探しているかが出ます）。
-Node-OracleDB
+## 5) API サーバ接続先（ポート）を確認
 
-Lambda のアーキと Instant Client のアーキが一致しているか再確認。
+通常 kubeadm の API サーバは **:6443** です。`~/.kube/config` が **:443** を向いていると接続拒否になりがち。
 
-よくある疑問
+```bash
+# 接続先URLを確認（server: の行）
+grep -n 'server:' $HOME/.kube/config
+```
 
-「Thinに上げれば楽と聞いた」
-その通りですが、Thin は DB 12.1+ が前提。11g では NJS-116/NJS-138 相当のエラーになります。11gのままなら Thick 一択です。
-Node-OracleDB
-+1
+* `https://<IPまたはLB名>:6443` になっていなければ、`admin.conf` をコピーし直すか修正してください。
+* 逆に、意図的に LB の **:443** 経由なら、その LB が :443→:6443 へ正しく転送しているか（ヘルスチェック/セキュリティグループ/ファイアウォール）を見直してください。
 
-「Instant Client のバージョンは？」
-19.x を推奨（11.2+ サーバーに接続可能という互換性が明記されています）。
-Oracle
+## 6) 状態確認
 
-「なぜ Node 18 では動いて Node 22 で壊れた？」
-Node 22 で実行基盤が Amazon Linux 2023 に変わり、以前の Layer（AL2 向けビルド）では libclntsh.so を見つけられないため。Layer は AL2023 向けに作り直しが必要です。
-Amazon Web Services, Inc.
+```bash
+# まずクラスタ情報
+kubectl cluster-info
 
-これで直らなければ
+# コアPodの立ち上がりを確認
+kubectl get pods -n kube-system
 
-使っている アーキ（x86_64/arm64）、Layer の 配置パス、実際の Instant Client ディレクトリ名（例：instantclient_19_22）を教えてください。
+# 目標コマンド
+kubectl get nodes
+```
 
-必要なら **最小構成のLayer ZIP（ディレクトリ構成と依存）**例をこちらで作ります。
+# それでもダメな場合の追加チェック
 
-あなた:
-oracledb.initOracleClient({ libDir: '/opt/oracle/instantclient_19_22' }); // 例
-AWS Lambdaのレイヤーでlibフォルダに格納しています。
-その場合、パスはどのようになりますか？"/opt/oracle/instantclient_19_2"の部分は変更しなければならないんじゃないかと思います。
-ChatGPT:
+### A) apiserver が起動しているか
 
-なるほど、良い視点です 👍
-Lambda のレイヤーに展開したフォルダ構成にあわせて、libDir のパスは 実際の配置場所に合わせて指定しないといけません。
+```bash
+# コンテナランタイムが containerd の場合
+sudo crictl ps | grep kube-apiserver
 
-基本ルール
+# docker の場合
+sudo docker ps | grep kube-apiserver
+```
 
-Lambda のレイヤーは /opt にマウントされます。
+出ていない場合は `/etc/kubernetes/manifests/kube-apiserver.yaml` のエラー（証明書パス/SAN/引数）が原因のことが多いです。編集ミスがあれば戻して `kubelet` 再起動。
 
-例えばレイヤー ZIP の中身がこうなっているとします：
+### B) SAN の不足（エンドポイントを変えた/増やした）
 
-layer.zip
-└─ lib/
-   └─ instantclient_19_22/
-      ├─ libclntsh.so
-      ├─ libnnz19.so
-      └─ ...
+LB 名や新IPでアクセスしたいのに証明書の SubjectAltName に入っていないと TLS で弾かれます。
+`--apiserver-cert-extra-sans <IP/DNS>` を付けて証明書再発行が必要です（kubeadm の設定ファイルに追記→再発行）。
 
+### C) ワーカーノードの kubelet クライアント証明書が期限切れ
 
-→ この場合、Lambda 上では /opt/lib/instantclient_19_22/ が存在します。
+コントロールプレーン復旧後も Node が NotReady のときは、各ノードで以下を実施して再発行を促します：
 
-コードでの指定例
-oracledb.initOracleClient({ 
-  libDir: '/opt/lib/instantclient_19_22' 
-});
+```bash
+# 各ノードで
+sudo systemctl stop kubelet
+sudo rm -f /var/lib/kubelet/pki/kubelet-client-*.pem /var/lib/kubelet/pki/kubelet-client-current.pem
+sudo systemctl start kubelet
+```
 
-よくある間違い
+（API サーバが上がっていれば kubelet の証明書ローテーションが再開します）
 
-Oracle のドキュメント例だと /opt/oracle/instantclient_19_22 になっていますが、これはレイヤーをそういう階層で作った場合の例です。
+# よくあるハマり所
 
-実際には、ZIP の展開先を確認して /opt/... 以下の正しいディレクトリを指定してください。
+* **`:443` に向いている**
+  kubeadm デフォルトは **`:6443`**。意図して 443 を使う場合は LB/Ingress で TLS/ポートの中継が正しいか確認。
 
-ls -R /opt を Lambda コンソール上の関数実行でログ出力させると確認できます。
+* **`ca.key` の権限/所在エラー**
+  実行は必ず `sudo`。ファイルは `/etc/kubernetes/pki/ca.key`。紛失していると `kubeadm certs renew` は使えません。
 
-確認ポイント
+* **時刻ずれ**
+  証明書検証は時刻に敏感。`timedatectl` で NTP 同期を確認。
 
-レイヤーZIPの階層構造（トップに lib/ を置いたか？それとも oracle/instantclient_19_22/？）
+# （重要）CA を紛失していた場合の方針
 
-libclntsh.so が直接そのディレクトリにあるか？
-→ 1つ上の階層を指してしまうと DPI-1047 が出ます。
+`/etc/kubernetes/pki/ca.key` を失った場合、既存 CA での通常更新は不可です。選択肢は：
 
-👉 もしレイヤー ZIP の中身を tree や ls -R の出力で見せてもらえれば、正確な libDir の書き方を示せます。
+1. **バックアップから CA を戻す**（最良）
+2. **新しい CA で再発行**
 
-フォルダ構成を教えていただけますか？
+   * apiserver などコントロールプレーン証明書と kubeconfig を新CAで作り直す
+   * 既存ノードとは信頼関係が切れるため、ノード再ジョイン（`kubeadm reset` → `kubeadm join`）が必要になることがあります
 
-ChatGPT の回答は必ずしも正しいとは限りません。重要な情報は確認するよ
+---
+
+この手順で多くの「期限切れ→接続拒否」を復旧できます。
+進めてみて、どこでエラーになったか（コマンド結果の先頭数行）を貼ってくれれば、そこからピンポイントで詰めます。
