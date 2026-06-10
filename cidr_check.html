@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CIDRチェックツール</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: #f0f4f8;
+      color: #2d3748;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: #1a202c;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+      max-width: 1100px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      color: #4a5568;
+      margin-bottom: 12px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    textarea {
+      flex: 1;
+      height: 140px;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.9rem;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus { border-color: #4299e1; }
+
+    button {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: #4299e1;
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: #3182ce; }
+
+    .btn-search {
+      background: #48bb78;
+      color: #fff;
+    }
+
+    .btn-search:hover { background: #38a169; }
+
+    .search-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .search-row input[type="text"] {
+      width: 220px;
+      padding: 9px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-row input[type="text"]:focus { border-color: #48bb78; }
+
+    #search-result {
+      font-size: 0.9rem;
+      color: #718096;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    th {
+      background: #edf2f7;
+      color: #4a5568;
+      text-align: left;
+      padding: 10px 14px;
+      font-weight: 600;
+      border-bottom: 2px solid #cbd5e0;
+    }
+
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid #e2e8f0;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr.highlight td { background: #fefcbf; }
+
+    tr:hover td { background: #f7fafc; }
+    tr.highlight:hover td { background: #fef9c3; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .badge-cidr { background: #bee3f8; color: #2b6cb0; }
+    .badge-ip   { background: #c6f6d5; color: #276749; }
+
+    #table-wrap { overflow-x: auto; }
+
+    .empty-state {
+      text-align: center;
+      color: #a0aec0;
+      padding: 32px 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+<h1>CIDRチェックツール</h1>
+
+<div class="card">
+  <h2>CIDR / IPアドレス一覧を入力</h2>
+  <div class="input-row">
+    <textarea id="cidr-input" placeholder="例:
+192.168.1.0/24
+10.0.0.0/8
+172.16.0.0/12
+8.8.8.8"></textarea>
+    <button class="btn-primary" onclick="applyList()">反映</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>CIDR一覧</h2>
+  <div id="table-wrap">
+    <div class="empty-state">上の欄にCIDR/IPアドレスを入力して「反映」を押してください。</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>IPアドレス検索</h2>
+  <div class="search-row">
+    <input type="text" id="ip-search" placeholder="例: 192.168.1.100" oninput="onSearchInput()" onkeydown="if(event.key==='Enter') searchIp()">
+    <button class="btn-search" onclick="searchIp()">検索</button>
+    <span id="search-result"></span>
+  </div>
+</div>
+
+<script>
+  // ---- IP utility ----
+
+  function ipToInt(ip) {
+    const p = ip.trim().split('.');
+    if (p.length !== 4) return null;
+    const n = ((parseInt(p[0], 10) << 24) |
+               (parseInt(p[1], 10) << 16) |
+               (parseInt(p[2], 10) << 8)  |
+                parseInt(p[3], 10)) >>> 0;
+    return isNaN(n) ? null : n;
+  }
+
+  function intToIp(n) {
+    return [(n >>> 24) & 0xFF, (n >>> 16) & 0xFF, (n >>> 8) & 0xFF, n & 0xFF].join('.');
+  }
+
+  function isValidIp(ip) {
+    const parts = ip.trim().split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(p => {
+      const v = parseInt(p, 10);
+      return !isNaN(v) && v >= 0 && v <= 255 && String(v) === p.trim();
+    });
+  }
+
+  // ---- CIDR calculation ----
+
+  function calcEntry(line) {
+    line = line.trim();
+    if (!line) return null;
+
+    if (line.includes('/')) {
+      const [ipPart, prefixPart] = line.split('/');
+      const prefix = parseInt(prefixPart, 10);
+      if (!isValidIp(ipPart) || isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+
+      const ipInt    = ipToInt(ipPart);
+      const maskInt  = prefix === 0 ? 0 : ((~0 << (32 - prefix)) >>> 0);
+      const netInt   = (ipInt & maskInt) >>> 0;
+      const bcastInt = (netInt | ((~maskInt) >>> 0)) >>> 0;
+
+      let hostCount, firstIp, lastIp;
+      if (prefix === 32) {
+        hostCount = 1;
+        firstIp = intToIp(netInt);
+        lastIp  = intToIp(netInt);
+      } else if (prefix === 31) {
+        hostCount = 2;
+        firstIp = intToIp(netInt);
+        lastIp  = intToIp(bcastInt);
+      } else {
+        hostCount = Math.pow(2, 32 - prefix) - 2;
+        firstIp = intToIp(netInt + 1);
+        lastIp  = intToIp(bcastInt - 1);
+      }
+
+      return {
+        type:      'cidr',
+        label:     intToIp(netInt) + '/' + prefix,
+        original:  line,
+        network:   intToIp(netInt),
+        broadcast: intToIp(bcastInt),
+        firstIp,
+        lastIp,
+        hostCount,
+        netInt,
+        bcastInt,
+        maskInt,
+        prefix
+      };
+    } else {
+      if (!isValidIp(line)) return null;
+      const ipInt = ipToInt(line);
+      return {
+        type:      'ip',
+        label:     line,
+        original:  line,
+        network:   line,
+        broadcast: line,
+        firstIp:   line,
+        lastIp:    line,
+        hostCount: 1,
+        netInt:    ipInt,
+        bcastInt:  ipInt,
+        maskInt:   0xFFFFFFFF,
+        prefix:    32
+      };
+    }
+  }
+
+  // ---- State ----
+  let entries = [];
+
+  // ---- Render table ----
+
+  function applyList() {
+    const raw = document.getElementById('cidr-input').value;
+    const lines = raw.split('\n');
+    entries = [];
+    const skipped = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const entry = calcEntry(line);
+      if (entry) {
+        entries.push(entry);
+      } else {
+        skipped.push(line.trim());
+      }
+    }
+
+    renderTable();
+    document.getElementById('search-result').textContent = '';
+    document.getElementById('ip-search').value = '';
+
+    if (skipped.length) {
+      alert('以下の行は無効なため除外しました:\n' + skipped.join('\n'));
+    }
+  }
+
+  function renderTable() {
+    const wrap = document.getElementById('table-wrap');
+
+    if (entries.length === 0) {
+      wrap.innerHTML = '<div class="empty-state">有効なCIDR/IPアドレスがありません。</div>';
+      return;
+    }
+
+    let html = `<table>
+      <thead>
+        <tr>
+          <th>入力値</th>
+          <th>種別</th>
+          <th>ネットワークアドレス</th>
+          <th>ブロードキャスト</th>
+          <th>使用可能IP範囲</th>
+          <th>ホスト数</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const badge = e.type === 'cidr'
+        ? `<span class="badge badge-cidr">CIDR</span>`
+        : `<span class="badge badge-ip">IP</span>`;
+
+      const range = e.firstIp === e.lastIp
+        ? e.firstIp
+        : `${e.firstIp} 〜 ${e.lastIp}`;
+
+      html += `<tr id="row-${i}">
+        <td>${escHtml(e.original)}</td>
+        <td>${badge}</td>
+        <td>${e.network}</td>
+        <td>${e.broadcast}</td>
+        <td>${range}</td>
+        <td>${e.hostCount.toLocaleString()}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  }
+
+  // ---- IP search ----
+
+  function onSearchInput() {
+    // ハイライトをリセット
+    for (let i = 0; i < entries.length; i++) {
+      const row = document.getElementById('row-' + i);
+      if (row) row.classList.remove('highlight');
+    }
+    document.getElementById('search-result').textContent = '';
+  }
+
+  function searchIp() {
+    const val = document.getElementById('ip-search').value.trim();
+    if (!val) return;
+
+    if (!isValidIp(val)) {
+      document.getElementById('search-result').textContent = '無効なIPアドレスです。';
+      return;
+    }
+
+    const targetInt = ipToInt(val);
+    let matched = 0;
+
+    // 全行のハイライトをリセット
+    for (let i = 0; i < entries.length; i++) {
+      const row = document.getElementById('row-' + i);
+      if (row) row.classList.remove('highlight');
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const inRange = targetInt >= e.netInt && targetInt <= e.bcastInt;
+      if (inRange) {
+        const row = document.getElementById('row-' + i);
+        if (row) {
+          row.classList.add('highlight');
+          if (matched === 0) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        matched++;
+      }
+    }
+
+    const result = document.getElementById('search-result');
+    if (matched === 0) {
+      result.textContent = `「${val}」はどのCIDRにも含まれていません。`;
+      result.style.color = '#e53e3e';
+    } else {
+      result.textContent = `「${val}」は ${matched} 件のCIDRに含まれています。`;
+      result.style.color = '#276749';
+    }
+  }
+
+  // ---- Utility ----
+
+  function escHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+</script>
+</body>
+</html>
