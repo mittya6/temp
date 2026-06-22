@@ -1,63 +1,42 @@
-なるほど、状況がよく分かりました！新しいパッケージを入れようとしたのではなく、システム全体のアップデート（`yum update`）をかけようとした際に、その2つのモジュールが原因で依存関係のエラー（Dependency Resolution Errors）が起きて全体の更新が止まってしまっている状態ですね。
+# docker停止
+sudo docker stop $(sudo docker ps -q)
 
-おそらく、以前にDockerやPodmanなどを導入しようとして、**RHEL 6に適合しない外部リポジトリ（CentOS 7/8用やRHEL 7/8用など）が有効化されてしまっている**ことが原因です。RHEL 6の公式リポジトリには存在しないパッケージを、`yum`が無理に探したりアップデートしようとして矛盾を起こしています。
+# ボリューム群が格納されているディレクトリを圧縮してバックアップ
+# ※ /home/user/backup/ の部分は、ご自身の環境の安全な退避先に書き換えてください
+sudo tar -czvf /home/user/backup/docker_volumes_backup.tar.gz /var/lib/docker/volumes/
 
-この状況を打破し、安全にアップデートを完了させるための対策は以下の通りです。
 
----
+# dockerアンインストール
+sudo systemctl stop docker
+sudo apt-get remove docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
-## 対策1：問題のパッケージをアップデート対象から除外する（一番手軽）
+# Dockerリポジトリの無効化（または削除）
+sudo rm /etc/apt/sources.list.d/docker.list
 
-`yum update` コマンドを実行する際に、エラーの原因となっている `fuse-overlayfs` と `slirp4netns` を一時的に無視して進める方法です。
+# アップグレード
+sudo apt update
+sudo apt upgrade -y
+sudo apt dist-upgrade -y
+sudo apt autoremove -y
 
-以下のコマンドを実行してみてください。
+# 
+sudo do-release-upgrade
 
-```bash
-sudo yum update -y --exclude=fuse-overlayfs --exclude=slirp4netns
 
-```
+# dockerインストール
+# 1. 必要な前提パッケージのインストール
+sudo apt update
+sudo apt install ca-certificates curl gnupg lsb-release
 
-これで無事に全体のアップデートが走るようであれば、ひとまずOSの更新という目的は達成できます。
+# 2. Dockerの公式GPGキーを追加
+sudo mkdir -m 0755 -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
----
+# 3. 22.04向けリポジトリのセットアップ
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-## 対策2：原因となっている外部リポジトリを特定して無効化する（根本解決）
-
-そもそもRHEL 6.8に対して、なぜその2つのパッケージが要求されているのか（どのリポジトリが原因か）を突き止めます。
-
-### 1. どこのリポジトリが原因か調べる
-
-まず、以下のコマンドでパッケージの情報を確認します。
-
-```bash
-yum list fuse-overlayfs slirp4netns
-
-```
-
-出力結果の右端に、そのパッケージを提供しようとしている**リポジトリ名**（例: `docker-ce-stable` や `epel` など）が表示されます。RHEL 6用ではないリポジトリ（El7やEl8向けのもの）が混ざっていないか確認してください。
-
-### 2. 誤って追加されたリポジトリを無効化する
-
-もし不適切なリポジトリ（例として `docker-ce` とします）が見つかった場合は、それを無効化してアップデートを試します。
-
-```bash
-sudo yum update -y --disablerepo=原因のリポジトリ名
-
-```
-
-今後もそのリポジトリを見に行かないように完全無効化する場合は、`/etc/yum.repos.d/` 内にある該当の `.repo` ファイルを開き、`enabled=1` を `enabled=0` に書き換えてください。
-
----
-
-## 対策3：不要であれば、競合しているパッケージを一度削除する
-
-もし過去に「試しにPodmanやDockerを入れようとして失敗した名残」であるなら、それらの古いパッケージ自体を一度システムから削除（`yum remove`）してしまうのが一番スッキリします。
-
-```bash
-sudo yum remove fuse-overlayfs slirp4netns
-
-```
-
-※もし「他の重要なパッケージも一緒に削除されます」と警告が出た場合は、無理に連動して消さないよう途中で `N` を押してキャンセルしてください。
-
-削除が成功すれば、通常通り `sudo yum update -y` が通るようになります。
+# 4. Dockerエンジンのインストール
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-compose-plugin
