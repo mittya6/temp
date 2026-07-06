@@ -1,3 +1,14 @@
+Concourse CIをローカル環境で構築するための `docker-compose.yml` ファイルですね。
+
+Concourseは「Webノード（UIとAPI）」と「Workerノード（実際のタスクを実行）」に分かれており、これらが安全に通信するために**事前にSSHキーを生成しておく必要があります**。
+
+以下の手順に沿ってセットアップを行ってください。
+
+### 1. 認証キーの生成
+
+まずはプロジェクトのディレクトリを作成し、その中でキーを生成します。ターミナルで以下のコマンドを順番に実行してください。
+
+```bash
 # キーを格納するディレクトリを作成
 mkdir -p keys/web keys/worker
 
@@ -12,10 +23,15 @@ ssh-keygen -t rsa -f ./keys/worker/worker_key -N ''
 cp ./keys/worker/worker_key.pub ./keys/web/authorized_worker_keys
 cp ./keys/web/tsa_host_key.pub ./keys/worker
 
+```
 
+---
 
+### 2. `docker-compose.yml` の作成
 
+同じディレクトリに `docker-compose.yml` という名前のファイルを作成し、以下の内容を貼り付けます。
 
+```yaml
 services:
   concourse-db:
     image: postgres:15
@@ -65,3 +81,24 @@ services:
 
 volumes:
   concourse-db:
+
+```
+
+---
+
+### 3. 起動とアクセス
+
+ファイルの準備ができたら、以下のコマンドでコンテナを起動します。
+
+```bash
+docker-compose up -d
+
+```
+
+起動後、ブラウザで **`http://localhost:8080`** にアクセスしてください。
+右上の「login」から進み、`docker-compose.yml` で設定した以下の初期アカウントでログインできます。
+
+* **ユーザー名:** `admin`
+* **パスワード:** `test`
+
+Workerの起動には少し時間がかかる場合があります。正常に接続されたかどうかは、Concourseにログイン後、Fly CLIツール（UI画面右下からダウンロード可能）を使って `fly -t main workers` コマンドを実行するか、UI上で確認できます。
