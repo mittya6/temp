@@ -7,20 +7,16 @@ Windows環境向けのコマンドですね。Windows 10以降であれば標準
 一番シンプルで確実な方法です。コマンドプロンプトを起動し、以下のコマンドを順番に実行してください。
 
 ```cmd
-:: キーを格納するディレクトリを作成
-mkdir keys\web
-mkdir keys\worker
+# Webノード用のキーを生成 (-m PEM を追加)
+ssh-keygen -m PEM -t rsa -f ./keys/web/tsa_host_key -N ''
+ssh-keygen -m PEM -t rsa -f ./keys/web/session_signing_key -N ''
 
-:: Webノード用のキーを生成
-ssh-keygen -t rsa -f keys\web\tsa_host_key -N ""
-ssh-keygen -t rsa -f keys\web\session_signing_key -N ""
+# Workerノード用のキーを生成 (-m PEM を追加)
+ssh-keygen -m PEM -t rsa -f ./keys/worker/worker_key -N ''
 
-:: Workerノード用のキーを生成
-ssh-keygen -t rsa -f keys\worker\worker_key -N ""
-
-:: WebとWorkerが互いを認証できるように公開鍵をコピー
-copy keys\worker\worker_key.pub keys\web\authorized_worker_keys
-copy keys\web\tsa_host_key.pub keys\worker\
+# 公開鍵のコピー（前回と同じ）
+cp ./keys/worker/worker_key.pub ./keys/web/authorized_worker_keys
+cp ./keys/web/tsa_host_key.pub ./keys/worker
 
 ```
 
