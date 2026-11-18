@@ -1,22 +1,57 @@
+LLM（Gemini）は一度に大量の抽出と計算を同時に行わせると、コンテキスト（記憶容量）の分散や推論のショートカットが起きやすく、数値の読み間違いや計算ミスが発生します。
+
+「1回のプロンプトでまとめて依頼しつつ、時間をかけて正確に計算させる」には、LLMの思考プロセスを強制的に段階化させるプロンプトエンジニアリング（思考の連鎖・役割分担の指示）が最も効果的です。
+
+### 1. プロンプトで「処理の段階化」と「検算」を強制する
+
+「まとめて計算して」と頼むのではなく、「まず数値を抽出して表にまとめ、その数値だけを使って1項目ずつ計算し、最後に検算する」という手順をプロンプト内で指示します。これにより、内部でステップバイステップの推論（Chain of Thought）が行われ、精度が劇的に上がります。
+
+そのままコピーして使えるプロンプトの例です。
+
+```markdown
+添付の決算短信PDFから、以下の財務指標を正確に算出してください。
+急いで回答する必要はありません。ハルシネーション（数値の捏造や読み間違い）を防ぐため、必ず以下の【実行ステップ】に従って順番に出力してください。
+
+### 算出したい指標
+1. ネットキャッシュ（現預金 ＋ 短期有価証券 － 有利子負債）
+2. ネットキャッシュ比率（ネットキャッシュ ÷ 時価総額 ※株価〇〇円で計算）
+3. FCF（営業CF ＋ 投資CF）
+4. 流動比率（流動資産 ÷ 流動負債 × 100）
+5. （その他必要な指標を追加）
+
+### 実行ステップ（厳守）
+* **ステップ1：基礎データの抽出と単位の確認**
+  計算に使う項目（現金及び預金、有価証券、短期借入金、長期借入金、流動資産、流動負債、営業CF、投資CFなど）をPDFから探し出し、**記載されているページ数・表の名称・元の単位（百万円、千円など）**とともに一覧表で出力してください。該当項目がない場合は「記載なし（0）」と明記してください。
+* **ステップ2：単位の統一**
+  抽出した数値をすべて「百万円（または円）」に統一して書き出してください。
+* **ステップ3：1項目ずつの計算過程の明示**
+  ステップ2の数値のみを使用し、計算式と途中の計算過程を省略せずに1つずつ記述して算出してください。暗算はせず、必ず式を書いてください。
+* **ステップ4：自己検算**
+  算出した結果とPDFの原文（貸借対照表やキャッシュ・フロー計算書）を再度照合し、桁の間違いや符号（プラス・マイナス）の反転がないか確認した結果を報告してください。
+
 ```
-$p='C:\ここを\出力した.xlsx'
-Add-Type -A System.IO.Compression.FileSystem
-$fSheet='xl/worksheets/sheet1.xml';$fBook='xl/workbook.xml';$fStyle='xl/styles.xml'
-$views={param($f,$x) if($f -eq $fBook){$x -replace '<sheets>','<bookViews><workbookView/></bookViews><sheets>'}elseif($f -eq $fSheet){$x -replace '<sheetFormatPr','<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr'}else{$x}}
-$dy={param($f,$x) if($f -eq $fSheet){$x -replace ' x14ac:dyDescent="[^"]*"',''}else{$x}}
-$ver={param($f,$x) if($f -eq $fBook){$x -replace '<fileVersion[^>]*/>','' -replace ' defaultThemeVersion="[^"]*"','' -replace '<calcPr[^>]*/>',''}else{$x}}
-$font={param($f,$x) if($f -eq $fStyle){([regex]'<scheme val="minor"/>').Replace(([regex]'<name val="Calibri"/>').Replace($x,'<name val="Yu Gothic"/>',1),'',1)}else{$x}}
-$draw={param($f,$x) if($f -eq $fSheet){$x -replace '<drawing [^>]*/>',''}else{$x}}
-$page={param($f,$x) if($f -eq $fSheet){$x -replace '<pageSetup[^>]*/>',''}else{$x}}
-$list=[ordered]@{A_views=@($views);B_dyDescent=@($dy);C_version=@($ver);D_font=@($font);E_drawing=@($draw);F_pageSetup=@($page);G_all=@($views,$dy,$ver,$font,$draw,$page)}
-foreach($k in $list.Keys){
-  $o=$p -replace '\.xlsx$',"_$k.xlsx";Copy-Item $p $o -Force
-  $z=[IO.Compression.ZipFile]::Open($o,'Update')
-  foreach($n in $fSheet,$fBook,$fStyle){
-    $e=$z.GetEntry($n);$rd=New-Object IO.StreamReader($e.Open(),[Text.Encoding]::UTF8);$x=$rd.ReadToEnd();$rd.Close();$e.Delete()
-    foreach($fn in $list[$k]){$x=& $fn $n $x}
-    $wr=New-Object IO.StreamWriter($z.CreateEntry($n).Open(),(New-Object Text.UTF8Encoding($false)));$wr.Write($x);$wr.Close()
-  }
-  $z.Dispose();"作成: $o"
-}
-```
+
+---
+
+### 2. Python（コード実行機能）を使わせる
+
+Geminiはテキストの生成（言葉の予測）は得意ですが、純粋な四則演算は苦手な側面があります。プロンプトの末尾に以下の一文を加えるだけで、Geminiが裏側で**Pythonプログラムを書いて実行**し、計算機として正確に処理するようになります。
+
+> **「計算処理はすべてPythonコードを実行して行い、人間が暗算するような推測は一切行わないでください。」**
+
+---
+
+### 3. 「Gem（カスタムGemini）」を作成する
+
+毎回長いプロンプトを打つのが手間な場合は、Geminiの画面左メニューにある「Gem を作成（または探索）」から、決算書分析専用のマイGeminiを作っておくのがおすすめです。
+
+* **Gemの指示（システムプロンプト）に上記「ステップ1〜4」と「Pythonでの計算必須」を登録**しておきます。
+* 普段使うときは、そのGemを開いて**決算短信のPDFをドラッグ＆ドロップし、「計算して（株価は〇〇円）」と一言送るだけ**で、毎回同じ厳密な手順で丁寧に計算してくれるようになります。
+
+---
+
+### 4. PDFの読み込ませ方のコツ
+
+決算短信は数十ページに及ぶことがありますが、後半の「注記事項」や「定性的情報」まで一度に読み込ませるとノイズが増えます。
+
+* もし毎回同じフォーマットの決算短信であれば、**「サマリー情報（1〜2ページ目）」と「財務諸表（貸借対照表・損益計算書・CF計算書）」のページだけを抽出**して読み込ませるか、プロンプトで「サマリー情報および連結財務諸表のページのみを参照すること」と指定すると、読み取り精度がさらに安定します。
